@@ -295,6 +295,40 @@ appExpress.get('/api/v1/openfoodfacts/barcode/:ean', offLimiter, async (req: Req
     res.json({ status: 'success', product });
 });
 
+/**
+ * GET /api/v1/supermercados/deals?limit=10
+ * Devuelve productos destacados y chollos de precio en los supermercados.
+ * Público (no requiere token).
+ */
+appExpress.get('/api/v1/supermercados/deals', async (req: Request, res: Response): Promise<void> => {
+    const limit = Math.min(parseInt(String(req.query.limit ?? '10'), 10), 30);
+    const supermarket = req.query.supermarket ? String(req.query.supermarket).toLowerCase() : null;
+
+    try {
+        let query = supabase
+            .from('productos')
+            .select('referencia_id, nombre, precio, supermercado_id, last_seen, ean, kcal, proteinas, carbohidratos, grasas')
+            .order('precio', { ascending: true })
+            .limit(limit);
+
+        if (supermarket) {
+            query = query.eq('supermercado_id', supermarket);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        res.json({
+            status: 'success',
+            total: data?.length || 0,
+            deals: data || []
+        });
+    } catch {
+        res.status(500).json({ status: 'error', error: { type: 'DATABASE_ERROR', description: 'Error al consultar chollos de supermercado.' } });
+    }
+});
+
 appExpress.post('/api/v1/auth/login', async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
 
