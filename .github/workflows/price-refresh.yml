@@ -1,0 +1,67 @@
+name: Macro Enrichment — Populate EAN & Macros
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Productos por llamada (máx. 50)'
+        required: false
+        default: '20'
+
+jobs:
+  enrich-macros:
+    name: Enrich Mercadona products with EAN and macros
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Run enrichment until all products are processed
+        run: |
+          BATCH=${{ github.event.inputs.batch_size || '20' }}
+          TOTAL_ENRICHED=0
+          ROUND=1
+
+          while true; do
+            echo "--- Ronda $ROUND ---"
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -X POST "${{ secrets.API_BASE_URL }}/api/v1/internal/enrich-macros?batch=${BATCH}" \
+              -H "x-internal-key: ${{ secrets.INTERNAL_API_KEY }}")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | head -n-1)
+
+            echo "HTTP Status: $HTTP_CODE"
+            echo "Response: $BODY"
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::error::El endpoint devolvió HTTP $HTTP_CODE. Abortando."
+              exit 1
+            fi
+
+            TOTAL_PENDING=$(echo "$BODY" | grep -o '"total_pending":[0-9]*' | cut -d: -f2)
+            ENRICHED=$(echo "$BODY" | grep -o '"enriched":[0-9]*' | cut -d: -f2)
+            FAILED=$(echo "$BODY" | grep -o '"failed":[0-9]*' | cut -d: -f2)
+            PROCESSED=$(echo "$BODY" | grep -o '"processed":[0-9]*' | cut -d: -f2)
+
+            TOTAL_ENRICHED=$((TOTAL_ENRICHED + ENRICHED))
+
+            echo "Pendientes: $TOTAL_PENDING | Enriquecidos esta ronda: $ENRICHED | Fallidos: $FAILED"
+
+            if [ "$TOTAL_PENDING" -eq 0 ]; then
+              echo "::notice::✅ Todos los productos enriquecidos. Total enriquecidos: $TOTAL_ENRICHED"
+              break
+            fi
+
+            if [ "$PROCESSED" -eq 0 ] || [ "$ENRICHED" -eq 0 ] && [ "$FAILED" -eq "$PROCESSED" ]; then
+              echo "::warning::⚠️ No se pudo enriquecer ningún producto en esta ronda. Deteniendo para evitar bucle infinito."
+              break
+            fi
+
+            ROUND=$((ROUND + 1))
+            sleep 2
+          done
+
+          echo "::notice::Total enriquecidos en esta ejecución: $TOTAL_ENRICHED"

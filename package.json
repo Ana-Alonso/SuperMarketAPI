@@ -1,0 +1,37 @@
+{
+  "name": "scraper-supermercados-api",
+  "version": "1.0.0",
+  "description": "API de Supermercados con estrategia Cache First para Calla y Come",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "mock": "ts-node src/mock-server.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "scraper",
+    "supermarket",
+    "cache-first",
+    "express",
+    "supabase"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.7",
+    "@types/tough-cookie": "^4.0.5",
+    "axios": "^1.6.8",
+    "axios-cookiejar-support": "^5.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.6.1",
+    "tough-cookie": "^4.1.3",
+    "typescript": "^5.4.5"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2"
+  }
+}
