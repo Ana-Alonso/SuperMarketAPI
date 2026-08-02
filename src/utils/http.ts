@@ -1,7 +1,19 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import http from 'http';
+import https from 'https';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// HTTP & HTTPS Keep-Alive Connection Pooling for ultra-low latency
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+
+const defaultAxiosConfig: AxiosRequestConfig = {
+    httpAgent,
+    httpsAgent,
+    timeout: 15000
+};
 
 export async function fetchWithFallback(
     targetUrl: string,
@@ -11,12 +23,19 @@ export async function fetchWithFallback(
     const zenRowsApiKey = process.env.ZENROWS_APIKEY;
     const isMockMode = !!process.env.MOCK_SUPERMARKET_URL;
     
+    const mergedConfig: AxiosRequestConfig = {
+        ...defaultAxiosConfig,
+        ...config,
+        headers: { ...config.headers }
+    };
+
     if (isMockMode || !zenRowsApiKey || zenRowsApiKey === 'tu-apikey-de-zenrows') {
-        return axios.get(targetUrl, config);
+        return axios.get(targetUrl, mergedConfig);
     }
     
     try {
         return await axios({
+            ...defaultAxiosConfig,
             url: 'https://api.zenrows.com/v1/',
             method: 'GET',
             params: {
@@ -29,7 +48,7 @@ export async function fetchWithFallback(
             timeout: config.timeout || 30000
         });
     } catch (proxyError: any) {
-        return axios.get(targetUrl, config);
+        return axios.get(targetUrl, mergedConfig);
     }
 }
 
@@ -42,12 +61,19 @@ export async function postWithFallback(
     const zenRowsApiKey = process.env.ZENROWS_APIKEY;
     const isMockMode = !!process.env.MOCK_SUPERMARKET_URL;
     
+    const mergedConfig: AxiosRequestConfig = {
+        ...defaultAxiosConfig,
+        ...config,
+        headers: { ...config.headers }
+    };
+
     if (isMockMode || !zenRowsApiKey || zenRowsApiKey === 'tu-apikey-de-zenrows') {
-        return axios.post(targetUrl, data, config);
+        return axios.post(targetUrl, data, mergedConfig);
     }
     
     try {
         return await axios({
+            ...defaultAxiosConfig,
             url: 'https://api.zenrows.com/v1/',
             method: 'POST',
             params: {
@@ -61,6 +87,6 @@ export async function postWithFallback(
             timeout: config.timeout || 30000
         });
     } catch (proxyError: any) {
-        return axios.post(targetUrl, data, config);
+        return axios.post(targetUrl, data, mergedConfig);
     }
 }

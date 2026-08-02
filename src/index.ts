@@ -8,6 +8,7 @@ import { ScrapedProduct } from './types/scraper';
 import { requireAuth } from './middleware/auth';
 import { enrichMercadonaProductsInBackground, enrichPendingMercadonaProducts, enrichPendingProductsAllSupermarkets } from './services/nutrition-enrichment';
 import { searchByName, getProductByEAN } from './services/openfoodfacts';
+import { ramCache } from './services/memory_cache';
 
 dotenv.config();
 
@@ -70,15 +71,11 @@ async function resolveCategoryId(categoryName: string): Promise<number | null> {
     }
 
     try {
-        const { data: existingCategory, error: fetchError } = await supabase
+        const { data: existingCategory } = await supabase
             .from('categorias')
             .select('id')
             .eq('nombre', normalizedCategoryName)
             .maybeSingle();
-
-        if (fetchError) {
-            return null;
-        }
 
         if (existingCategory) {
             categoryIdCache[normalizedCategoryName] = Number(existingCategory.id);
@@ -91,11 +88,7 @@ async function resolveCategoryId(categoryName: string): Promise<number | null> {
             .select('id')
             .single();
 
-        if (insertError) {
-            return null;
-        }
-
-        if (newCategory) {
+        if (!insertError && newCategory) {
             categoryIdCache[normalizedCategoryName] = Number(newCategory.id);
             return Number(newCategory.id);
         }
@@ -108,6 +101,14 @@ async function resolveCategoryId(categoryName: string): Promise<number | null> {
 
 async function searchProductsForSupermarket(supermarketId: string, query: string, referenceCp: string): Promise<ScrapedProduct[]> {
     const normalizedSupermarketId = supermarketId.toLowerCase();
+    const cacheKey = `${normalizedSupermarketId}:${query.trim().toLowerCase()}:${referenceCp}`;
+
+    // ⚡ 1. RAM Cache lookup (<10ms)
+    const ramResult = ramCache.get<ScrapedProduct[]>(cacheKey);
+    if (ramResult && ramResult.length > 0) {
+        return ramResult;
+    }
+
     let dbCachedProducts: any[] | null = null;
     
     try {
@@ -139,7 +140,7 @@ async function searchProductsForSupermarket(supermarketId: string, query: string
             }
         }
 
-        return dbCachedProducts.map(item => ({
+        const formattedResults = dbCachedProducts.map(item => ({
             referencia_id: item.referencia_id,
             nombre: item.nombre,
             precio: parseFloat(item.precio),
@@ -156,6 +157,9 @@ async function searchProductsForSupermarket(supermarketId: string, query: string
                 }
                 : null
         }));
+
+        ramCache.set(cacheKey, formattedResults);
+        return formattedResults;
     }
 
     const matchedScraper = scraperRegistry[normalizedSupermarketId];
