@@ -1,11 +1,13 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { supabase } from './supabase';
 import { scraperRegistry } from './scrapers/registry';
 import { ScrapedProduct } from './types/scraper';
 import { requireAuth } from './middleware/auth';
-import { enrichMercadonaProductsInBackground, enrichPendingMercadonaProducts } from './services/nutrition-enrichment';
+import { enrichMercadonaProductsInBackground, enrichPendingMercadonaProducts, enrichPendingProductsAllSupermarkets } from './services/nutrition-enrichment';
+import { searchByName, getProductByEAN } from './services/openfoodfacts';
 
 dotenv.config();
 
@@ -20,6 +22,9 @@ const CACHE_TTL_HOURS = parseInt(process.env.CACHE_TTL_HOURS || '24', 10);
 
 const appExpress = express();
 appExpress.use(express.json());
+
+// ── Seguridad HTTP (helmet) ────────────────────────────────────────────────────
+appExpress.use(helmet());
 
 // ── Rate Limiting (RGPD / protección de cuota de APIs) ──────────────────────
 // Límite global: 200 peticiones por IP cada 15 minutos
@@ -205,6 +210,8 @@ async function searchProductsForSupermarket(supermarketId: string, query: string
     return liveScrapedProducts;
 }
 
+// ── Enriquecimiento de macros ──────────────────────────────────────────────────
+// Acepta ?supermarket=eroski|dia|carrefour|aldi|mercadona (default: mercadona)
 appExpress.post('/api/v1/internal/enrich-macros', async (req: Request, res: Response): Promise<void> => {
     const providedKey = req.headers['x-internal-key'];
     const expectedKey = process.env.INTERNAL_API_KEY;
@@ -214,9 +221,74 @@ appExpress.post('/api/v1/internal/enrich-macros', async (req: Request, res: Resp
         return;
     }
 
-    const batchSize = Math.min(parseInt(String(req.query.batch ?? '20'), 10), 50);
-    const result = await enrichPendingMercadonaProducts(batchSize);
+    const batchSize     = Math.min(parseInt(String(req.query.batch ?? '20'), 10), 50);
+    const supermarketId = String(req.query.supermarket ?? 'mercadona').toLowerCase();
+    const result        = await enrichPendingProductsAllSupermarkets(supermarketId, batchSize);
     res.json({ status: 'success', data: result });
+});
+
+// ── OpenFoodFacts endpoints (públicos, sin auth) ───────────────────────────────
+// Rate limit estricto: 60 búsquedas/15 min por IP
+const offLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { status: 'error', error: 'Límite de búsquedas de ingredientes alcanzado. Espera 15 minutos.' }
+});
+
+/**
+ * GET /api/v1/openfoodfacts/search?q=leche&limit=10
+ * Busca ingredientes con macros en OpenFoodFacts.
+ * Público (no requiere token). Ideal para autocomplete de ingredientes.
+ */
+appExpress.get('/api/v1/openfoodfacts/search', offLimiter, async (req: Request, res: Response): Promise<void> => {
+    const query = (req.query.q as string)?.trim();
+    const limit = Math.min(parseInt(String(req.query.limit ?? '10'), 10), 25);
+
+    if (!query || query.length < 2) {
+        res.status(400).json({
+            status: 'error',
+            error: { type: 'INVALID_INPUT', description: 'El parámetro q debe tener al menos 2 caracteres.' }
+        });
+        return;
+    }
+
+    const results = await searchByName(query, limit);
+    res.json({
+        status: 'success',
+        query,
+        total: results.length,
+        products: results
+    });
+});
+
+/**
+ * GET /api/v1/openfoodfacts/barcode/:ean
+ * Obtiene los macros de un producto por su código de barras EAN.
+ * Público (no requiere token).
+ */
+appExpress.get('/api/v1/openfoodfacts/barcode/:ean', offLimiter, async (req: Request, res: Response): Promise<void> => {
+    const { ean } = req.params;
+
+    if (!/^\d{8,14}$/.test(ean)) {
+        res.status(400).json({
+            status: 'error',
+            error: { type: 'INVALID_INPUT', description: 'El EAN debe ser numérico y tener entre 8 y 14 dígitos.' }
+        });
+        return;
+    }
+
+    const product = await getProductByEAN(ean);
+    if (!product) {
+        res.status(404).json({
+            status: 'error',
+            error: { type: 'NOT_FOUND', description: `No se encontró ningún producto con EAN ${ean} en OpenFoodFacts.` }
+        });
+        return;
+    }
+
+    res.json({ status: 'success', product });
 });
 
 appExpress.post('/api/v1/auth/login', async (req: Request, res: Response): Promise<void> => {
