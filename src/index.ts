@@ -24,8 +24,20 @@ const CACHE_TTL_HOURS = parseInt(process.env.CACHE_TTL_HOURS || '24', 10);
 const appExpress = express();
 appExpress.use(express.json());
 
+// ── CORS middleware ────────────────────────────────────────────────────────────
+appExpress.use((req: Request, res: Response, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-internal-key');
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+    }
+    next();
+});
+
 // ── Seguridad HTTP (helmet) ────────────────────────────────────────────────────
-appExpress.use(helmet());
+appExpress.use(helmet({ crossOriginResourcePolicy: false }));
 
 // ── Rate Limiting (RGPD / protección de cuota de APIs) ──────────────────────
 // Límite global: 200 peticiones por IP cada 15 minutos
