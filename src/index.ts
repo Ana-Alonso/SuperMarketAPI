@@ -391,7 +391,7 @@ appExpress.post('/api/v1/auth/login', async (req: Request, res: Response): Promi
     }
 });
 
-appExpress.get('/api/v1/supermercados/search', searchLimiter, requireAuth, async (req: Request, res: Response): Promise<void> => {
+appExpress.get('/api/v1/supermercados/search', searchLimiter, async (req: Request, res: Response): Promise<void> => {
     const query = req.query.q as string;
 
     if (!query) {
@@ -437,7 +437,7 @@ appExpress.get('/api/v1/supermercados/search', searchLimiter, requireAuth, async
     }
 });
 
-appExpress.get('/api/v1/supermercados/:id/search', searchLimiter, requireAuth, async (req: Request, res: Response): Promise<void> => {
+appExpress.get('/api/v1/supermercados/:id/search', searchLimiter, async (req: Request, res: Response): Promise<void> => {
     const { id: supermarketId } = req.params;
     const query = req.query.q as string;
 
