@@ -95,7 +95,7 @@ export const dailyApiLimiter = rateLimit({
 });
 
 appExpress.use(globalLimiter);
-appExpress.use(dailyApiLimiter);
+appExpress.use('/api', dailyApiLimiter);
 
 const categoryIdCache: Record<string, number> = {};
 
