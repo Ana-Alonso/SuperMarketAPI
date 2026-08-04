@@ -70,7 +70,23 @@ export const searchLimiter = rateLimit({
     }
 });
 
+// Límite diario por cuenta/IP: 50 peticiones en 24h
+export const dailyApiLimiter = rateLimit({
+    windowMs: 24 * 60 * 60 * 1000,
+    max: 50,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+        status: 'error',
+        error: {
+            type: 'DAILY_RATE_LIMIT_EXCEEDED',
+            description: 'Has alcanzado tu límite diario de uso de la API (50 llamadas/día por cuenta). Inténtalo de nuevo mañana.'
+        }
+    }
+});
+
 appExpress.use(globalLimiter);
+appExpress.use(dailyApiLimiter);
 
 const categoryIdCache: Record<string, number> = {};
 
