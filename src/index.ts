@@ -39,6 +39,12 @@ appExpress.use((req: Request, res: Response, next) => {
 // ── Seguridad HTTP (helmet) ────────────────────────────────────────────────────
 appExpress.use(helmet({ crossOriginResourcePolicy: false }));
 
+const skipInternalRequests = (req: Request) => {
+    const expectedKey = process.env.INTERNAL_API_KEY;
+    const providedKey = req.headers['x-internal-key'];
+    return typeof expectedKey === 'string' && typeof providedKey === 'string' && providedKey === expectedKey;
+};
+
 // ── Rate Limiting (RGPD / protección de cuota de APIs) ──────────────────────
 // Límite global: 200 peticiones por IP cada 15 minutos
 const globalLimiter = rateLimit({
@@ -46,6 +52,7 @@ const globalLimiter = rateLimit({
     max: 200,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    skip: skipInternalRequests,
     message: {
         status: 'error',
         error: {
@@ -61,6 +68,7 @@ export const searchLimiter = rateLimit({
     max: 30,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    skip: skipInternalRequests,
     message: {
         status: 'error',
         error: {
@@ -76,6 +84,7 @@ export const dailyApiLimiter = rateLimit({
     max: 50,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    skip: skipInternalRequests,
     message: {
         status: 'error',
         error: {
